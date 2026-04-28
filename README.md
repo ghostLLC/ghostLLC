@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="card.svg" width="100%" style="max-width:800px" alt="GhostLLC">
+  <img src="card.gif" width="100%" style="max-width:800px" alt="GhostLLC">
 </p>
 
 <p align="center">
