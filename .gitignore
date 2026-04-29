@@ -1,0 +1,18 @@
+# OMC local state
+.omc/
+
+# Vercel config
+.vercel/
+
+# Node modules
+node_modules/
+
+# Contains API keys - do not commit
+CLAUDE.md
+
+# Cached data
+steam_data.json
+
+# OS files
+.DS_Store
+Thumbs.db

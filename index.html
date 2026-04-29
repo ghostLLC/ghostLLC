@@ -1,0 +1,1395 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>晚星 - GhostLLC</title>
+<style>
+  *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+  :root {
+    --blue-100: #e0f0ff;
+    --blue-300: #7eb8ff;
+    --blue-500: #3b8beb;
+    --blue-700: #1a56b8;
+    --blue-900: #0a1a3a;
+    --accent: #f0a050;
+    --accent-glow: 0 0 16px rgba(240, 160, 80, 0.25);
+    --bg: #060d1a;
+    --card-bg: rgba(10, 25, 55, 0.65);
+    --text: #c8ddf8;
+    --text-dim: #6b8db5;
+    --glow: 0 0 20px rgba(59, 139, 235, 0.3);
+    --border: rgba(59, 139, 235, 0.15);
+  }
+
+  html { scroll-behavior: smooth; }
+  /* Subtle grain via radial noise simulation */
+  body::before {
+    content: ''; position: fixed; inset: 0; z-index: 1;
+    pointer-events: none;
+    background-image: radial-gradient(1px 1px at 10% 20%, rgba(255,255,255,0.015) 50%, transparent 50%),
+                      radial-gradient(1px 1px at 25% 55%, rgba(255,255,255,0.012) 50%, transparent 50%),
+                      radial-gradient(1px 1px at 42% 12%, rgba(255,255,255,0.018) 50%, transparent 50%),
+                      radial-gradient(1px 1px at 60% 75%, rgba(255,255,255,0.01) 50%, transparent 50%),
+                      radial-gradient(1px 1px at 78% 32%, rgba(255,255,255,0.014) 50%, transparent 50%),
+                      radial-gradient(1px 1px at 91% 63%, rgba(255,255,255,0.012) 50%, transparent 50%);
+    background-size: 200px 200px;
+  }
+  body {
+    font-family: 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    overflow-x: hidden;
+    line-height: 1.7;
+    position: relative;
+  }
+
+  /* ====== Scroll Progress Bar ====== */
+  #scroll-progress {
+    position: fixed; top: 0; left: 0; height: 3px;
+    background: linear-gradient(90deg, var(--blue-500), var(--blue-300));
+    z-index: 100; transition: width 0.1s;
+    box-shadow: 0 0 10px rgba(59, 139, 235, 0.5), 0 0 20px rgba(59, 139, 235, 0.2);
+  }
+
+  /* ====== Navigation ====== */
+  .nav {
+    position: fixed; top: 0; left: 0; width: 100%; z-index: 99;
+    padding: 0 24px;
+    background: rgba(6, 13, 26, 0.8);
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+    transition: all 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  .nav-inner {
+    max-width: 800px; margin: 0 auto;
+    display: flex; align-items: center; justify-content: space-between;
+    height: 56px;
+  }
+  .nav-brand {
+    font-weight: 700; font-size: 18px;
+    background: linear-gradient(135deg, #c8e2ff, #5ea8f7);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  .nav-links { display: flex; gap: 24px; list-style: none; }
+  .nav-links a {
+    color: var(--text-dim); text-decoration: none; font-size: 14px;
+    transition: color 0.3s; position: relative;
+  }
+  .nav-links a::after {
+    content: ''; position: absolute; bottom: -4px; left: 0;
+    width: 0; height: 1.5px; background: var(--accent);
+    transition: width 0.3s;
+  }
+  .nav-links a:hover, .nav-links a.active { color: var(--accent); }
+  .nav-links a:hover::after, .nav-links a.active::after { width: 100%; }
+
+  .nav-toggle { display: none; background: none; border: none; cursor: pointer; padding: 4px; }
+  .nav-toggle span { display: block; width: 22px; height: 2px; background: var(--blue-300); margin: 5px 0; border-radius: 1px; transition: all 0.3s; }
+
+  /* ====== Canvas ====== */
+  #starfield {
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    z-index: 0; cursor: crosshair;
+  }
+
+
+
+  .scanlines {
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    pointer-events: none; z-index: 1;
+  }
+  .scanlines::before {
+    content: ''; position: absolute; inset: 0;
+    background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(59,139,235,0.018) 2px, rgba(59,139,235,0.018) 4px);
+  }
+  .scanlines::after {
+    content: ''; position: absolute; inset: 0;
+    background: repeating-linear-gradient(0deg, transparent, transparent 3px, rgba(126,184,255,0.01) 3px, rgba(126,184,255,0.01) 6px);
+  }
+
+  /* ====== Mouse Spotlight ====== */
+  .spotlight {
+    position: fixed; pointer-events: none; z-index: 3;
+    border-radius: 50%; transform: translate(-50%, -50%);
+    will-change: left, top;
+  }
+  .spotlight-outer {
+    width: 520px; height: 520px;
+    background: radial-gradient(circle at center,
+      rgba(90, 160, 240, 0.07) 0%,
+      rgba(59, 139, 235, 0.04) 25%,
+      rgba(30, 80, 160, 0.015) 50%,
+      transparent 72%);
+  }
+  .spotlight-inner {
+    width: 160px; height: 160px;
+    background: radial-gradient(circle at center,
+      rgba(180, 215, 255, 0.1) 0%,
+      rgba(100, 165, 240, 0.05) 35%,
+      transparent 70%);
+  }
+  /* Subtle cursor ring */
+  .cursor-ring {
+    position: fixed; pointer-events: none; z-index: 4;
+    width: 32px; height: 32px;
+    border-radius: 50%;
+    border: 1px solid rgba(126, 184, 255, 0.25);
+    box-shadow: 0 0 12px rgba(59, 139, 235, 0.15), inset 0 0 6px rgba(59, 139, 235, 0.08);
+    transform: translate(-50%, -50%);
+    transition: width 0.35s, height 0.35s, border-color 0.35s;
+  }
+
+  /* Orbit dots around cursor */
+  .orbit-dot {
+    position: fixed; pointer-events: none; z-index: 5;
+    width: 4px; height: 4px; border-radius: 50%;
+    background: var(--blue-300);
+    box-shadow: 0 0 6px var(--blue-500);
+    transform: translate(-50%, -50%);
+  }
+
+  /* Cursor trail particles */
+  .trail {
+    position: fixed; pointer-events: none; z-index: 2;
+    border-radius: 50%;
+    background: var(--blue-300);
+    animation: trailFade 0.8s ease-out forwards;
+  }
+  @keyframes trailFade {
+    0% { transform: translate(-50%, -50%) scale(1); opacity: 0.8; }
+    100% { transform: translate(-50%, -50%) scale(0); opacity: 0; }
+  }
+
+  /* ====== Main Container ====== */
+  .main { position: relative; z-index: 2; max-width: 820px; margin: 0 auto; padding: 0 24px; }
+
+  /* ====== Hero ====== */
+  .hero {
+    min-height: 100vh; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; text-align: center;
+    padding-top: 56px;
+  }
+  /* Energy Core breathing aura */
+  .core-aura {
+    position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+    width: 200px; height: 200px; border-radius: 50%;
+    background: radial-gradient(circle, rgba(59,139,235,0.06) 0%, rgba(59,139,235,0.02) 50%, transparent 70%);
+    animation: coreAura 3s ease-in-out infinite;
+    pointer-events: none;
+  }
+  @keyframes coreAura {
+    0%, 100% { transform: translate(-50%, -50%) scale(0.9); opacity: 0.5; }
+    50% { transform: translate(-50%, -50%) scale(1.15); opacity: 1; }
+  }
+  /* Energy Core */
+  .core {
+    position: relative; width: 160px; height: 160px;
+    margin-bottom: 32px;
+  }
+  .core-ring {
+    position: absolute; border-radius: 50%;
+    top: 50%; left: 50%; transform: translate(-50%, -50%);
+  }
+  /* Outer ring - rotating */
+  .core-outer {
+    width: 160px; height: 160px;
+    background: conic-gradient(from 0deg, transparent 60deg, var(--blue-500) 90deg, var(--blue-300) 120deg, transparent 150deg, transparent 240deg, var(--blue-700) 270deg, var(--blue-500) 300deg, transparent 330deg);
+    animation: coreSpin 8s linear infinite;
+    box-shadow: 0 0 30px rgba(59,139,235,0.2), 0 0 80px rgba(59,139,235,0.06);
+  }
+  /* Middle ring - counter-rotating */
+  .core-mid {
+    width: 118px; height: 118px;
+    background: conic-gradient(from 120deg, transparent 40deg, var(--blue-300) 70deg, rgba(126,184,255,0.5) 90deg, transparent 120deg, transparent 200deg, var(--blue-500) 230deg, rgba(59,139,235,0.5) 260deg, transparent 300deg);
+    animation: coreSpinRev 5.5s linear infinite;
+  }
+  /* Inner ring */
+  .core-inner {
+    width: 78px; height: 78px;
+    background: conic-gradient(from 240deg, var(--blue-500), var(--blue-300), rgba(126,184,255,0.4), var(--blue-500));
+    animation: coreSpin 3.5s linear infinite;
+  }
+  /* Center orb */
+  .core-center {
+    width: 44px; height: 44px; border-radius: 50%;
+    box-shadow: 0 0 25px rgba(59,139,235,0.6), 0 0 60px rgba(59,139,235,0.25);
+    animation: corePulse 2s ease-in-out infinite;
+    overflow: hidden;
+  }
+  /* Orbiting dots */
+  .core-dot {
+    position: absolute; width: 5px; height: 5px; border-radius: 50%;
+    background: var(--blue-300);
+    box-shadow: 0 0 8px var(--blue-500);
+    top: 50%; left: 50%;
+    animation: dotOrbit 4s linear infinite;
+  }
+  .core-dot:nth-child(6) { animation-duration: 3.2s; animation-delay: -1s; }
+  .core-dot:nth-child(7) { animation-duration: 4.8s; animation-delay: -2s; }
+
+  @keyframes coreSpin { to { transform: translate(-50%, -50%) rotate(360deg); } }
+  @keyframes coreSpinRev { to { transform: translate(-50%, -50%) rotate(-360deg); } }
+  @keyframes corePulse {
+    0%, 100% { box-shadow: 0 0 25px rgba(59,139,235,0.6), 0 0 60px rgba(59,139,235,0.25); }
+    50% { box-shadow: 0 0 45px rgba(59,139,235,0.9), 0 0 100px rgba(59,139,235,0.4); }
+  }
+  @keyframes dotOrbit {
+    0% { transform: translate(-50%, -50%) rotate(0deg) translateX(80px) rotate(0deg); }
+    100% { transform: translate(-50%, -50%) rotate(360deg) translateX(80px) rotate(-360deg); }
+  }
+
+  .hero-name {
+    font-size: clamp(36px, 7vw, 64px); font-weight: 800; letter-spacing: 0.04em;
+    background: linear-gradient(110deg, #c8e2ff 0%, #5ea8f7 30%, #90c8ff 45%, #e8f4ff 50%, #90c8ff 55%, #5ea8f7 70%, #c8e2ff 100%);
+    background-size: 300% 100%;
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+    margin-bottom: 6px; position: relative;
+    animation: sweepShimmer 4s ease-in-out infinite;
+    filter: drop-shadow(0 0 18px rgba(59, 139, 235, 0.3));
+  }
+  @keyframes sweepShimmer {
+    0%, 100% { background-position: 0% center; }
+    50% { background-position: 100% center; }
+  }
+  .hero-name.glitch {
+    animation: glitchAnim 0.3s ease, sweepShimmer 4s ease-in-out infinite;
+  }
+  @keyframes glitchAnim {
+    0%, 100% { transform: translate(0); }
+    20% { transform: translate(-3px, 2px); }
+    40% { transform: translate(3px, -1px); }
+    60% { transform: translate(-2px, -2px); }
+    80% { transform: translate(2px, 1px); }
+  }
+  .hero-sub {
+    font-size: 15px; color: var(--text-dim); letter-spacing: 0.2em;
+    margin-bottom: 28px; text-transform: uppercase;
+  }
+  .typewriter-wrap { height: 32px; display: flex; align-items: center; margin-bottom: 40px; }
+  .typewriter {
+    font-size: 17px; color: var(--blue-300);
+    border-right: 2px solid var(--blue-500); padding-right: 6px; opacity: 1;
+    animation: cursorBlink 0.8s ease-in-out infinite;
+    white-space: nowrap; overflow: hidden;
+  }
+  @keyframes cursorBlink { 0%,100%{opacity:1} 50%{opacity:0.15} }
+
+  /* Social links inline */
+  .social-row {
+    display: flex; gap: 14px; flex-wrap: wrap; justify-content: center; margin-bottom: 48px;
+  }
+  .social-link {
+    display: flex; flex-direction: column; align-items: center;
+    padding: 14px 22px; border-radius: 14px;
+    background: var(--card-bg); border: 1px solid var(--border);
+    text-decoration: none; transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+    backdrop-filter: blur(8px); min-width: 120px;
+  }
+  .social-link:hover {
+    border-color: var(--blue-500);
+    box-shadow: var(--glow), 0 0 40px rgba(59,139,235,0.08);
+    transform: translateY(-4px);
+    background: rgba(20,45,85,0.8);
+  }
+  .social-link .icon { width: 36px; height: 36px; margin-bottom: 6px; fill: var(--blue-300); color: var(--blue-300); transition: fill 0.35s, color 0.35s; }
+  .social-link:hover .icon { fill: #fff; color: #fff; }
+  .social-link .uid { font-size: 14px; font-weight: 600; color: var(--blue-300); transition: color 0.35s; }
+  .social-link:hover .uid { color: #fff; }
+
+  /* Scroll-down chevron */
+  .scroll-hint {
+    animation: bounceDown 1.5s ease infinite;
+    fill: var(--blue-500); width: 28px; height: 28px; cursor: pointer;
+  }
+  @keyframes bounceDown {
+    0%,100%{transform:translateY(0)} 50%{transform:translateY(10px)}
+  }
+
+  /* ====== Section Shared ====== */
+  section { padding: 80px 0; position: relative; }
+  section::after {
+    content: ''; position: absolute; bottom: 0; left: 10%; width: 80%; height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(59,139,235,0.12), transparent);
+  }
+  section:last-of-type::after { display: none; }
+  .section-tag {
+    font-size: 13px; letter-spacing: 0.2em; color: var(--blue-500);
+    text-transform: uppercase; margin-bottom: 8px;
+  }
+  .section-title {
+    font-size: clamp(26px, 5vw, 36px); font-weight: 700; margin-bottom: 36px;
+    background: linear-gradient(110deg, #c8e2ff 0%, #5ea8f7 30%, #b8d8ff 45%, #e8f4ff 50%, #b8d8ff 55%, #5ea8f7 70%, #c8e2ff 100%);
+    background-size: 300% 100%;
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+    display: inline-block;
+    animation: sweepShimmer 4.5s ease-in-out infinite;
+    filter: drop-shadow(0 0 12px rgba(59, 139, 235, 0.2));
+  }
+  .highlight { color: var(--accent); font-weight: 600; }
+
+
+  /* ====== Cursor Glow on Cards ====== */
+  .card-glow {
+    position: relative; overflow: hidden;
+  }
+  .card-glow::after {
+    content: ''; position: absolute; inset: 0; z-index: 0;
+    background: radial-gradient(circle 300px at var(--mx, 50%) var(--my, 50%), rgba(240, 160, 80, 0.07) 0%, rgba(59, 139, 235, 0.03) 50%, transparent 70%);
+    opacity: 0; transition: opacity 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+    pointer-events: none; border-radius: inherit;
+  }
+  .card-glow:hover::after { opacity: 1; }
+
+  /* ====== Glass Card ====== */
+  .glass-card {
+    background: var(--card-bg); border: 1px solid var(--border);
+    border-radius: 16px; padding: 36px;
+    backdrop-filter: blur(10px);
+    box-shadow:
+      0 8px 32px rgba(0,0,0,0.3),
+      inset 0 1px 0 rgba(255,255,255,0.03),
+      inset 0 0 0 1px rgba(255,255,255,0.015);
+  }
+
+  /* ====== About ====== */
+  .about-grid {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 20px;
+    margin-top: 28px;
+  }
+  .stat-item {
+    background: rgba(59,139,235,0.06); border: 1px solid var(--border);
+    border-radius: 12px; padding: 20px 16px; text-align: center;
+    transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  .stat-item:hover {
+    border-color: var(--blue-500); box-shadow: var(--glow); transform: translateY(-2px);
+  }
+  .stat-item:nth-child(1) .stat-num { color: var(--accent); }
+  .stat-item:nth-child(4) .stat-num { color: var(--accent); }
+  .stat-num { font-size: 28px; font-weight: 700; color: var(--blue-300); }
+  .stat-label { font-size: 13px; color: var(--text-dim); margin-top: 4px; }
+
+  /* ====== Skills ====== */
+  .skills-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; }
+  .skill-card {
+    background: var(--card-bg); border: 1px solid var(--border);
+    border-radius: 14px; padding: 24px 20px;
+    backdrop-filter: blur(8px);
+    transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  .skill-card:hover {
+    border-color: var(--blue-500); box-shadow: var(--glow); transform: translateY(-3px);
+  }
+  .skill-icon { font-size: 32px; margin-bottom: 12px; }
+  .skill-card h3 { font-size: 16px; margin-bottom: 8px; color: var(--blue-300); }
+  .skill-card p { font-size: 13px; color: var(--text-dim); line-height: 1.6; }
+
+  /* Skill bars */
+  .skill-bar-wrap { margin-top: 28px; display: grid; gap: 16px; }
+  .skill-bar-label { display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 6px; }
+  .skill-bar-label span:last-child { color: var(--blue-300); }
+  .skill-bar-bg {
+    height: 6px; border-radius: 3px; background: rgba(59,139,235,0.1);
+    overflow: hidden;
+  }
+  .skill-bar-fill {
+    height: 100%; border-radius: 3px;
+    background: linear-gradient(90deg, var(--blue-700), var(--blue-500), var(--blue-300));
+    width: 0; transition: width 1.2s ease;
+  }
+
+  /* ====== Interests ====== */
+  .interests-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; }
+  .interest-card {
+    background: var(--card-bg); border: 1px solid var(--border);
+    border-radius: 14px; padding: 28px 20px; text-align: center;
+    backdrop-filter: blur(8px);
+    transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  .interest-card:hover {
+    border-color: var(--blue-500); box-shadow: var(--glow); transform: translateY(-4px) scale(1.02);
+  }
+  .interest-emoji { font-size: 40px; margin-bottom: 10px; }
+  .interest-card h3 { font-size: 15px; color: var(--blue-300); margin-bottom: 6px; }
+  .interest-card p { font-size: 12px; color: var(--text-dim); }
+
+
+  /* ====== Skeleton Loading ====== */
+  .steam-loading { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: center; }
+  .steam-loading span { width: 100%; text-align: center; color: var(--text-dim); font-size: 13px; }
+  .skeleton-card {
+    width: calc(50% - 6px); min-width: 260px; height: 72px;
+    border-radius: 12px;
+    background: linear-gradient(90deg, rgba(59,139,235,0.06) 0%, rgba(59,139,235,0.12) 50%, rgba(59,139,235,0.06) 100%);
+    background-size: 200% 100%;
+    animation: skeletonShimmer 1.5s ease-in-out infinite;
+    border: 1px solid var(--border);
+  }
+  @keyframes skeletonShimmer {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+  }
+
+  /* ====== Steam Games ====== */
+  .steam-header { display: flex; align-items: center; gap: 16px; margin-bottom: 24px; flex-wrap: wrap; }
+  .steam-total { font-size: 14px; color: var(--text-dim); margin-top: 4px; }
+  .steam-total b { color: var(--blue-300); }
+  .games-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; }
+  .game-card {
+    display: flex; align-items: center; gap: 14px;
+    background: var(--card-bg); border: 1px solid var(--border);
+    border-radius: 12px; padding: 14px 18px;
+    backdrop-filter: blur(8px);
+    transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  .game-card:hover {
+    border-color: var(--accent); box-shadow: var(--accent-glow);
+    transform: translateX(4px);
+  }
+  .game-card img {
+    width: 44px; height: 44px; border-radius: 8px;
+    flex-shrink: 0;
+  }
+  .game-info { flex: 1; min-width: 0; }
+  .game-name {
+    font-size: 14px; font-weight: 600; color: var(--text);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .game-hours-row { display: flex; align-items: center; gap: 8px; margin-top: 5px; }
+  .game-hours-bar {
+    flex: 1; height: 5px; border-radius: 3px;
+    background: rgba(59,139,235,0.12);
+    overflow: hidden;
+  }
+  .game-hours-fill {
+    height: 100%; border-radius: 3px;
+    background: linear-gradient(90deg, var(--blue-700), var(--blue-500), var(--blue-300));
+  }
+  .game-hours-num {
+    font-size: 13px; font-weight: 600; color: var(--blue-300);
+    white-space: nowrap;
+  }
+  .game-recent { font-size: 11px; color: var(--text-dim); margin-top: 2px; }
+  .steam-loading-fallback { text-align: center; padding: 40px; color: var(--text-dim); }
+
+  /* ====== Contact ====== */
+  .contact-row { display: flex; gap: 14px; flex-wrap: wrap; justify-content: center; }
+
+  /* ====== Footer ====== */
+  .site-footer {
+    text-align: center; padding: 40px 0;
+    font-size: 13px; color: var(--text-dim);
+    border-top: 1px solid var(--border); margin-top: 60px;
+  }
+
+  /* ====== Back to top ====== */
+  .back-top {
+    position: fixed; bottom: 28px; right: 28px; z-index: 50;
+    width: 42px; height: 42px; border-radius: 50%;
+    background: var(--card-bg); border: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer;
+    opacity: 0; transform: translateY(20px);
+    transition: all 0.3s;
+    fill: var(--blue-300);
+  }
+  .back-top.visible { opacity: 1; transform: translateY(0); }
+  .back-top:hover { border-color: var(--accent); box-shadow: var(--accent-glow); }
+
+  /* ====== Fade-in ====== */
+  .fade-in {
+    opacity: 0; transform: translateY(30px);
+    transition: opacity 0.7s cubic-bezier(0.16, 1, 0.3, 1), transform 0.7s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .fade-in.visible { opacity: 1; transform: translateY(0); }
+
+  /* ====== Floating particles ====== */
+  .fp {
+    position: fixed; border-radius: 50%; background: var(--blue-300);
+    opacity: 0.5; pointer-events: none; z-index: 0;
+    animation: floatUp linear infinite;
+  }
+  @keyframes floatUp {
+    0%{transform:translateY(100vh) scale(0);opacity:0}
+    10%{opacity:.6}
+    90%{opacity:.2}
+    100%{transform:translateY(-10vh) scale(1);opacity:0}
+  }
+
+  /* ====== Responsive ====== */
+
+  /* Tablet landscape */
+  @media (max-width: 900px) {
+    .core { width: 130px; height: 130px; }
+    .core-aura { width: 170px; height: 170px; }
+    .core-outer { width: 130px; height: 130px; }
+    .core-mid { width: 96px; height: 96px; }
+    .core-inner { width: 64px; height: 64px; }
+    .core-center { width: 38px; height: 38px; }
+    .core-center img { width: 38px; height: 38px; }
+    .core-dot { animation-name: dotOrbitSm; }
+    .hero-name { font-size: clamp(32px, 8vw, 52px); }
+    section { padding: 60px 0; }
+    .skills-grid { grid-template-columns: repeat(2, 1fr); }
+    .interests-grid { grid-template-columns: repeat(2, 1fr); }
+    .social-link { min-width: 110px; padding: 12px 16px; }
+    .social-link .uid { font-size: 13px; }
+  }
+  @keyframes dotOrbitSm {
+    0% { transform: translate(-50%, -50%) rotate(0deg) translateX(65px) rotate(0deg); }
+    100% { transform: translate(-50%, -50%) rotate(360deg) translateX(65px) rotate(-360deg); }
+  }
+
+  /* Tablet portrait / large phones */
+  @media (max-width: 768px) {
+    .nav-links {
+      max-height: 0; overflow: hidden; opacity: 0;
+      flex-direction: column; position: absolute; top: 56px; left: 0; width: 100%;
+      background: rgba(6,13,26,0.95); padding: 0 24px; gap: 0;
+      border-bottom: 1px solid transparent;
+      transition: max-height 0.35s ease, opacity 0.35s ease, padding 0.35s ease, gap 0.35s ease, border-color 0.35s ease;
+    }
+    .nav-links.open {
+      max-height: 320px; opacity: 1;
+      padding: 16px 24px; gap: 14px;
+      border-bottom-color: var(--border);
+    }
+    .nav-toggle { display: block; }
+    .hero { min-height: 90vh; padding-top: 40px; }
+    .core { width: 120px; height: 120px; margin-bottom: 24px; }
+    .core-aura { width: 150px; height: 150px; }
+    .core-outer { width: 120px; height: 120px; }
+    .core-mid { width: 88px; height: 88px; }
+    .core-inner { width: 58px; height: 58px; }
+    .core-center { width: 34px; height: 34px; }
+    .core-center img { width: 34px; height: 34px; }
+    .core-dot { width: 4px; height: 4px; animation-name: dotOrbitXs; }
+    section { padding: 48px 0; }
+    .section-title { font-size: clamp(22px, 6vw, 30px); margin-bottom: 24px; }
+    .skills-grid { grid-template-columns: 1fr 1fr; gap: 12px; }
+    .interests-grid { grid-template-columns: 1fr 1fr; gap: 12px; }
+    .about-grid { grid-template-columns: 1fr 1fr; gap: 12px; }
+    .glass-card { padding: 24px; }
+    .social-row { gap: 8px; }
+    .social-link { min-width: 90px; padding: 12px 12px; }
+    .social-link .icon { width: 28px; height: 28px; }
+    .social-link .uid { font-size: 11px; }
+    .nav-inner { height: 50px; }
+    .nav-brand { font-size: 16px; }
+    .spotlight-outer { width: 360px; height: 360px; }
+    .spotlight-inner { width: 120px; height: 120px; }
+    .back-top { bottom: 20px; right: 20px; width: 36px; height: 36px; }
+  }
+  @keyframes dotOrbitXs {
+    0% { transform: translate(-50%, -50%) rotate(0deg) translateX(60px) rotate(0deg); }
+    100% { transform: translate(-50%, -50%) rotate(360deg) translateX(60px) rotate(-360deg); }
+  }
+
+  /* Small phones */
+  @media (max-width: 480px) {
+    .hero { min-height: 85vh; }
+    .core { width: 100px; height: 100px; margin-bottom: 20px; }
+    .core-aura { width: 130px; height: 130px; }
+    .core-outer { width: 100px; height: 100px; }
+    .core-mid { width: 72px; height: 72px; }
+    .core-inner { width: 48px; height: 48px; }
+    .core-center { width: 30px; height: 30px; }
+    .core-center img { width: 30px; height: 30px; }
+    .hero-name { font-size: clamp(28px, 9vw, 40px); }
+    .hero-sub { font-size: 12px; letter-spacing: 0.15em; }
+    .typewriter { font-size: 14px; }
+    section { padding: 36px 0; }
+    .section-tag { font-size: 11px; }
+    .section-title { font-size: clamp(20px, 7vw, 26px); margin-bottom: 20px; }
+    .skills-grid { grid-template-columns: 1fr; gap: 10px; }
+    .interests-grid { grid-template-columns: 1fr; gap: 10px; }
+    .about-grid { grid-template-columns: 1fr; gap: 10px; }
+    .glass-card { padding: 18px; border-radius: 12px; }
+    .about-card p, .glass-card p { font-size: 14px; }
+    .social-row { gap: 6px; }
+    .social-link { min-width: 75px; padding: 10px 10px; border-radius: 10px; }
+    .social-link .icon { width: 24px; height: 24px; margin-bottom: 4px; }
+    .social-link .uid { font-size: 10px; }
+    .stat-num { font-size: 22px; }
+    .stat-label { font-size: 11px; }
+    .skill-card { padding: 16px 14px; }
+    .skill-card h3 { font-size: 14px; }
+    .skill-icon { font-size: 24px; }
+    .interest-card { padding: 18px 12px; }
+    .interest-emoji { font-size: 28px; }
+    .spotlight-outer { width: 280px; height: 280px; }
+  
+    .spotlight-inner { width: 100px; height: 100px; }
+    .cursor-ring { width: 24px; height: 24px; }
+    .card-glow::after { background: radial-gradient(circle 200px at var(--mx, 50%) var(--my, 50%), rgba(240, 160, 80, 0.07) 0%, rgba(59, 139, 235, 0.03) 50%, transparent 70%); }
+    .main { padding: 0 16px; }
+  }
+
+  /* ====== Reduced Motion ====== */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+    #starfield { opacity: 0.15; }
+    .spotlight, .cursor-ring, .orbit-dot, .trail { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<div id="scroll-progress"></div>
+
+<!-- Navigation -->
+<nav class="nav" id="nav">
+  <div class="nav-inner">
+    <span class="nav-brand">GhostLLC</span>
+    <ul class="nav-links" id="nav-links">
+      <li><a href="#hero" class="active">首页</a></li>
+      <li><a href="#about">关于</a></li>
+      <li><a href="#skills">技能</a></li>
+      <li><a href="#interests">兴趣</a></li>
+      <li><a href="#steam">游戏</a></li>
+      <li><a href="#findme">找到我</a></li>
+    </ul>
+    <button class="nav-toggle" id="nav-toggle" aria-label="menu">
+      <span></span><span></span><span></span>
+    </button>
+  </div>
+</nav>
+
+<!-- Starfield -->
+<canvas id="starfield"></canvas>
+<div class="scanlines"></div>
+<div class="spotlight spotlight-outer" id="spot-outer"></div>
+<div class="spotlight spotlight-inner" id="spot-inner"></div>
+<div class="cursor-ring" id="cursor-ring"></div>
+<div id="floating-particles"></div>
+
+<!-- Main -->
+<div class="main">
+
+  <!-- Hero -->
+  <section class="hero" id="hero">
+    <div class="core">
+      <div class="core-aura"></div>
+      <div class="core-ring core-outer"></div>
+      <div class="core-ring core-mid"></div>
+      <div class="core-ring core-inner"></div>
+      <div class="core-ring core-center">
+        <img src="https://avatars.githubusercontent.com/u/157214273?v=4" width="44" height="44" style="border-radius:50%;display:block" alt="Avatar">
+      </div>
+      <div class="core-dot"></div>
+      <div class="core-dot"></div>
+    </div>
+    <h1 class="hero-name" id="hero-name">晚 星</h1>
+    <p class="hero-sub">GhostLLC</p>
+    <div class="typewriter-wrap">
+      <span class="typewriter" id="typewriter"></span>
+    </div>
+    <div class="social-row">
+      <a class="social-link" href="https://github.com/ghostLLC" target="_blank" rel="noopener">
+        <svg class="icon" viewBox="0 0 24 24"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg>
+        <span class="uid">ghostLLC</span>
+      </a>
+      <a class="social-link" href="https://space.bilibili.com/456595757" target="_blank" rel="noopener">
+        <svg class="icon" viewBox="0 0 24 24"><path d="M17.813 4.653h.854c1.51.054 2.769.578 3.773 1.574 1.004.995 1.524 2.249 1.56 3.76v7.36c-.036 1.51-.556 2.769-1.56 3.773s-2.262 1.524-3.773 1.56H5.333c-1.51-.036-2.769-.556-3.773-1.56S.036 18.858 0 17.347v-7.36c.036-1.511.556-2.765 1.56-3.76 1.004-.996 2.262-1.52 3.773-1.574h.774l-1.174-1.12a1.234 1.234 0 0 1-.373-.906c0-.356.124-.658.373-.907l.027-.027c.267-.249.573-.373.92-.373.347 0 .653.124.92.373L9.653 4.44c.071.071.134.142.187.213h4.267a.836.836 0 0 1 .16-.213l2.853-2.747c.267-.249.573-.373.92-.373.347 0 .662.151.929.4.267.249.391.551.391.907 0 .355-.124.657-.373.906zM5.333 7.24c-.746.018-1.373.276-1.88.773-.506.498-.769 1.13-.786 1.894v7.52c.017.764.28 1.395.786 1.893.507.498 1.134.756 1.88.773h13.334c.746-.017 1.373-.275 1.88-.773.506-.498.769-1.129.786-1.893v-7.52c-.017-.765-.28-1.396-.786-1.894-.507-.497-1.134-.755-1.88-.773zM8 11.107c.373 0 .684.124.933.373.25.249.383.569.4.96v1.173c-.017.391-.15.711-.4.96-.249.25-.56.374-.933.374s-.684-.125-.933-.374c-.25-.249-.383-.569-.4-.96V12.44c0-.373.129-.689.386-.947.258-.257.574-.386.947-.386zm8 0c.373 0 .684.124.933.373.25.249.383.569.4.96v1.173c-.017.391-.15.711-.4.96-.249.25-.56.374-.933.374s-.684-.125-.933-.374c-.25-.249-.383-.569-.4-.96V12.44c.017-.391.15-.711.4-.96.249-.249.56-.373.933-.373Z"/></svg>
+        <span class="uid">Ghost_雲里看晚星</span>
+      </a>
+      <a class="social-link" href="https://steamcommunity.com/id/llc1203/" target="_blank" rel="noopener">
+        <svg class="icon" viewBox="0 0 24 24"><path d="M11.979 0C5.678 0 .511 4.86.022 11.037l6.432 2.658c.545-.371 1.203-.59 1.912-.59.063 0 .125.004.188.006l2.861-4.142V8.91c0-2.495 2.028-4.524 4.524-4.524 2.494 0 4.524 2.031 4.524 4.527s-2.03 4.525-4.524 4.525h-.105l-4.076 2.911c0 .052.004.105.004.159 0 1.875-1.515 3.396-3.39 3.396-1.635 0-3.016-1.173-3.331-2.727L.436 15.27C1.862 20.307 6.486 24 11.979 24c6.627 0 11.999-5.373 11.999-12S18.605 0 11.979 0zM7.54 18.21l-1.473-.61c.262.543.714.999 1.314 1.25 1.297.539 2.793-.076 3.332-1.375.263-.63.264-1.319.005-1.949s-.75-1.121-1.377-1.383c-.624-.26-1.29-.249-1.878-.03l1.523.63c.956.4 1.409 1.5 1.009 2.455-.397.957-1.497 1.41-2.454 1.012H7.54zm11.415-9.303c0-1.662-1.353-3.015-3.015-3.015-1.665 0-3.015 1.353-3.015 3.015 0 1.665 1.35 3.015 3.015 3.015 1.663 0 3.015-1.35 3.015-3.015zm-5.273-.005c0-1.252 1.013-2.266 2.265-2.266 1.249 0 2.266 1.014 2.266 2.266 0 1.251-1.017 2.265-2.266 2.265-1.253 0-2.265-1.014-2.265-2.265z"/></svg>
+        <span class="uid">llc1203</span>
+      </a>
+      <a class="social-link" href="https://www.douyin.com/user/MS4wLjABAAAANsRi16n-D4Q17Qkd4r3dhRAbf4NiQU6W6orjZ1y-rMzZuaJBnUDz1VnZhHt16HSO?from_tab_name=main" target="_blank" rel="noopener">
+        <svg class="icon" viewBox="0 0 24 24"><path d="M12.525.02c1.31-.02 2.61-.01 3.91-.02.08 1.53.63 3.09 1.75 4.17 1.12 1.11 2.7 1.62 4.24 1.79v4.03c-1.44-.05-2.89-.35-4.2-.97-.57-.26-1.1-.59-1.62-.93-.01 2.92.01 5.84-.02 8.75-.08 1.4-.54 2.79-1.35 3.94-1.31 1.92-3.58 3.17-5.91 3.21-1.43.08-2.86-.31-4.08-1.03-2.02-1.19-3.44-3.37-3.65-5.71-.02-.5-.03-1-.01-1.49.18-1.9 1.12-3.72 2.58-4.96 1.66-1.44 3.98-2.13 6.15-1.72.02 1.48-.04 2.96-.04 4.44-.99-.32-2.15-.23-3.02.37-.63.41-1.11 1.04-1.36 1.75-.21.51-.15 1.07-.14 1.61.24 1.64 1.82 3.02 3.5 2.87 1.12-.01 2.19-.66 2.77-1.61.19-.33.4-.67.41-1.06.1-1.79.06-3.57.07-5.36.01-4.03-.01-8.05.02-12.07z"/></svg>
+        <span class="uid">Ghost_晚星（见过黄霄雲7次版）</span>
+      </a>
+    </div>
+    <svg class="scroll-hint" viewBox="0 0 24 24" onclick="document.getElementById('about').scrollIntoView({behavior:'smooth'})">
+      <path d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6 1.41-1.41z"/>
+    </svg>
+  </section>
+
+  <!-- About -->
+  <section class="fade-in" id="about">
+    <p class="section-tag">✦ About</p>
+    <h2 class="section-title">关于我</h2>
+    <div class="glass-card">
+      <p>你好，我是 <span class="highlight">晚星</span>，也可以叫我 <span class="highlight">GhostLLC</span>。</p>
+      <p>一个热爱代码、游戏与创作的普通人。相信技术可以让世界变得更有趣，也相信每一行代码背后都应该有温度。热衷开源社区，喜欢捣鼓各种有意思的项目。</p>
+      <p>白天写代码，晚上打游戏。偶尔剪剪视频，在 B 站和抖音分享一些日常与技术内容。Steam 库存永远在增长，但通关的游戏永远只有那几个。</p>
+      <div class="about-grid">
+        <div class="stat-item">
+          <div class="stat-num">∞</div>
+          <div class="stat-label">好奇心</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-num">42</div>
+          <div class="stat-label">生命的意义</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-num">&lt;/&gt;</div>
+          <div class="stat-label">日常语言</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-num">7x</div>
+          <div class="stat-label">见过黄霄雲</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Skills -->
+  <section class="fade-in" id="skills">
+    <p class="section-tag">✦ Skills</p>
+    <h2 class="section-title">技能 & 工具箱</h2>
+    <div class="skills-grid">
+      <div class="skill-card">
+        <div class="skill-icon">🖥️</div>
+        <h3>前端开发</h3>
+        <p>HTML / CSS / JavaScript，喜欢做有设计感的交互页面</p>
+      </div>
+      <div class="skill-card">
+        <div class="skill-icon">⚙️</div>
+        <h3>后端 & 工具</h3>
+        <p>Python / Node.js，写脚本、搭服务、自动化一切</p>
+      </div>
+      <div class="skill-card">
+        <div class="skill-icon">🎮</div>
+        <h3>游戏开发</h3>
+        <p>Unity / Unreal 摸鱼选手，Steam 库存永远在增长</p>
+      </div>
+      <div class="skill-card">
+        <div class="skill-icon">🎬</div>
+        <h3>视频剪辑</h3>
+        <p>Pr / 达芬奇，B站和抖音的业余 UP 主</p>
+      </div>
+    </div>
+    <div class="skill-bar-wrap" id="skill-bars">
+      <div>
+        <div class="skill-bar-label"><span>代码能力</span><span>—</span></div>
+        <div class="skill-bar-bg"><div class="skill-bar-fill" data-width="85%"></div></div>
+      </div>
+      <div>
+        <div class="skill-bar-label"><span>游戏时长</span><span>—</span></div>
+        <div class="skill-bar-bg"><div class="skill-bar-fill" data-width="92%"></div></div>
+      </div>
+      <div>
+        <div class="skill-bar-label"><span>视频剪辑</span><span>—</span></div>
+        <div class="skill-bar-bg"><div class="skill-bar-fill" data-width="60%"></div></div>
+      </div>
+      <div>
+        <div class="skill-bar-label"><span>社交能力</span><span>—</span></div>
+        <div class="skill-bar-bg"><div class="skill-bar-fill" data-width="35%"></div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Interests -->
+  <section class="fade-in" id="interests">
+    <p class="section-tag">✦ Interests</p>
+    <h2 class="section-title">兴趣爱好</h2>
+    <div class="interests-grid">
+      <div class="interest-card">
+        <div class="interest-emoji">🎮</div>
+        <h3>游戏</h3>
+        <p>Steam / Switch / 什么都玩</p>
+      </div>
+      <div class="interest-card">
+        <div class="interest-emoji">🎵</div>
+        <h3>音乐</h3>
+        <p>华语流行 / 黄霄雲</p>
+      </div>
+      <div class="interest-card">
+        <div class="interest-emoji">💻</div>
+        <h3>开源</h3>
+        <p>GitHub 常驻居民</p>
+      </div>
+      <div class="interest-card">
+        <div class="interest-emoji">📹</div>
+        <h3>视频创作</h3>
+        <p>B站 & 抖音 UP 主</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Steam Games -->
+  <section class="fade-in" id="steam">
+    <p class="section-tag">✦ Steam</p>
+    <h2 class="section-title">游戏时光</h2>
+    <div class="steam-header">
+      <svg width="28" height="28" viewBox="0 0 24 24" style="fill:var(--blue-300)">
+        <path d="M11.979 0C5.678 0 .511 4.86.022 11.037l6.432 2.658c.545-.371 1.203-.59 1.912-.59.063 0 .125.004.188.006l2.861-4.142V8.91c0-2.495 2.028-4.524 4.524-4.524 2.494 0 4.524 2.031 4.524 4.527s-2.03 4.525-4.524 4.525h-.105l-4.076 2.911c0 .052.004.105.004.159 0 1.875-1.515 3.396-3.39 3.396-1.635 0-3.016-1.173-3.331-2.727L.436 15.27C1.862 20.307 6.486 24 11.979 24c6.627 0 11.999-5.373 11.999-12S18.605 0 11.979 0zM7.54 18.21l-1.473-.61c.262.543.714.999 1.314 1.25 1.297.539 2.793-.076 3.332-1.375.263-.63.264-1.319.005-1.949s-.75-1.121-1.377-1.383c-.624-.26-1.29-.249-1.878-.03l1.523.63c.956.4 1.409 1.5 1.009 2.455-.397.957-1.497 1.41-2.454 1.012H7.54zm11.415-9.303c0-1.662-1.353-3.015-3.015-3.015-1.665 0-3.015 1.353-3.015 3.015 0 1.665 1.35 3.015 3.015 3.015 1.663 0 3.015-1.35 3.015-3.015zm-5.273-.005c0-1.252 1.013-2.266 2.265-2.266 1.249 0 2.266 1.014 2.266 2.266 0 1.251-1.017 2.265-2.266 2.265-1.253 0-2.265-1.014-2.265-2.265z"/>
+      </svg>
+      <div>
+        <div class="game-name" style="color:var(--blue-300);font-size:16px;" id="steam-title">加载中...</div>
+        <div class="steam-total" id="steam-total"></div>
+      </div>
+    </div>
+    <div class="games-grid" id="games-grid">
+      <div class="steam-loading">
+        <div class="skeleton-card"></div>
+        <div class="skeleton-card"></div>
+        <div class="skeleton-card"></div>
+        <div class="skeleton-card"></div>
+        <span>正在同步 Steam 游戏数据...</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- Find Me -->
+  <section class="fade-in" id="findme">
+    <p class="section-tag">✦ Find Me</p>
+    <h2 class="section-title">找到我</h2>
+    <div class="contact-row">
+      <a class="social-link" href="https://github.com/ghostLLC" target="_blank" rel="noopener">
+        <svg class="icon" viewBox="0 0 24 24"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg>
+        <span class="uid">ghostLLC</span>
+      </a>
+      <a class="social-link" href="https://space.bilibili.com/456595757" target="_blank" rel="noopener">
+        <svg class="icon" viewBox="0 0 24 24"><path d="M17.813 4.653h.854c1.51.054 2.769.578 3.773 1.574 1.004.995 1.524 2.249 1.56 3.76v7.36c-.036 1.51-.556 2.769-1.56 3.773s-2.262 1.524-3.773 1.56H5.333c-1.51-.036-2.769-.556-3.773-1.56S.036 18.858 0 17.347v-7.36c.036-1.511.556-2.765 1.56-3.76 1.004-.996 2.262-1.52 3.773-1.574h.774l-1.174-1.12a1.234 1.234 0 0 1-.373-.906c0-.356.124-.658.373-.907l.027-.027c.267-.249.573-.373.92-.373.347 0 .653.124.92.373L9.653 4.44c.071.071.134.142.187.213h4.267a.836.836 0 0 1 .16-.213l2.853-2.747c.267-.249.573-.373.92-.373.347 0 .662.151.929.4.267.249.391.551.391.907 0 .355-.124.657-.373.906zM5.333 7.24c-.746.018-1.373.276-1.88.773-.506.498-.769 1.13-.786 1.894v7.52c.017.764.28 1.395.786 1.893.507.498 1.134.756 1.88.773h13.334c.746-.017 1.373-.275 1.88-.773.506-.498.769-1.129.786-1.893v-7.52c-.017-.765-.28-1.396-.786-1.894-.507-.497-1.134-.755-1.88-.773zM8 11.107c.373 0 .684.124.933.373.25.249.383.569.4.96v1.173c-.017.391-.15.711-.4.96-.249.25-.56.374-.933.374s-.684-.125-.933-.374c-.25-.249-.383-.569-.4-.96V12.44c0-.373.129-.689.386-.947.258-.257.574-.386.947-.386zm8 0c.373 0 .684.124.933.373.25.249.383.569.4.96v1.173c-.017.391-.15.711-.4.96-.249.25-.56.374-.933.374s-.684-.125-.933-.374c-.25-.249-.383-.569-.4-.96V12.44c.017-.391.15-.711.4-.96.249-.249.56-.373.933-.373Z"/></svg>
+        <span class="uid">Ghost_雲里看晚星</span>
+      </a>
+      <a class="social-link" href="https://steamcommunity.com/id/llc1203/" target="_blank" rel="noopener">
+        <svg class="icon" viewBox="0 0 24 24"><path d="M11.979 0C5.678 0 .511 4.86.022 11.037l6.432 2.658c.545-.371 1.203-.59 1.912-.59.063 0 .125.004.188.006l2.861-4.142V8.91c0-2.495 2.028-4.524 4.524-4.524 2.494 0 4.524 2.031 4.524 4.527s-2.03 4.525-4.524 4.525h-.105l-4.076 2.911c0 .052.004.105.004.159 0 1.875-1.515 3.396-3.39 3.396-1.635 0-3.016-1.173-3.331-2.727L.436 15.27C1.862 20.307 6.486 24 11.979 24c6.627 0 11.999-5.373 11.999-12S18.605 0 11.979 0zM7.54 18.21l-1.473-.61c.262.543.714.999 1.314 1.25 1.297.539 2.793-.076 3.332-1.375.263-.63.264-1.319.005-1.949s-.75-1.121-1.377-1.383c-.624-.26-1.29-.249-1.878-.03l1.523.63c.956.4 1.409 1.5 1.009 2.455-.397.957-1.497 1.41-2.454 1.012H7.54zm11.415-9.303c0-1.662-1.353-3.015-3.015-3.015-1.665 0-3.015 1.353-3.015 3.015 0 1.665 1.35 3.015 3.015 3.015 1.663 0 3.015-1.35 3.015-3.015zm-5.273-.005c0-1.252 1.013-2.266 2.265-2.266 1.249 0 2.266 1.014 2.266 2.266 0 1.251-1.017 2.265-2.266 2.265-1.253 0-2.265-1.014-2.265-2.265z"/></svg>
+        <span class="uid">llc1203</span>
+      </a>
+      <a class="social-link" href="https://www.douyin.com/user/MS4wLjABAAAANsRi16n-D4Q17Qkd4r3dhRAbf4NiQU6W6orjZ1y-rMzZuaJBnUDz1VnZhHt16HSO?from_tab_name=main" target="_blank" rel="noopener">
+        <svg class="icon" viewBox="0 0 24 24"><path d="M12.525.02c1.31-.02 2.61-.01 3.91-.02.08 1.53.63 3.09 1.75 4.17 1.12 1.11 2.7 1.62 4.24 1.79v4.03c-1.44-.05-2.89-.35-4.2-.97-.57-.26-1.1-.59-1.62-.93-.01 2.92.01 5.84-.02 8.75-.08 1.4-.54 2.79-1.35 3.94-1.31 1.92-3.58 3.17-5.91 3.21-1.43.08-2.86-.31-4.08-1.03-2.02-1.19-3.44-3.37-3.65-5.71-.02-.5-.03-1-.01-1.49.18-1.9 1.12-3.72 2.58-4.96 1.66-1.44 3.98-2.13 6.15-1.72.02 1.48-.04 2.96-.04 4.44-.99-.32-2.15-.23-3.02.37-.63.41-1.11 1.04-1.36 1.75-.21.51-.15 1.07-.14 1.61.24 1.64 1.82 3.02 3.5 2.87 1.12-.01 2.19-.66 2.77-1.61.19-.33.4-.67.41-1.06.1-1.79.06-3.57.07-5.36.01-4.03-.01-8.05.02-12.07z"/></svg>
+        <span class="uid">Ghost_晚星（见过黄霄雲7次版）</span>
+      </a>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer class="site-footer">
+    <p>晚星 GhostLLC &copy; 2026 — 「梦想是不会发光的，发光的是追梦的你。」</p>
+  </footer>
+
+</div>
+
+<!-- Back to top -->
+<div class="back-top" id="back-top" onclick="window.scrollTo({top:0,behavior:'smooth'})">
+  <svg width="20" height="20" viewBox="0 0 24 24"><path d="M7.41 15.41L12 10.83l4.59 4.58L18 14l-6-6-6 6z"/></svg>
+</div>
+
+<script>
+// ====== Scroll Progress ======
+const progressBar = document.getElementById('scroll-progress');
+window.addEventListener('scroll', () => {
+  const h = document.documentElement.scrollHeight - window.innerHeight;
+  progressBar.style.width = h > 0 ? (window.scrollY / h * 100) + '%' : '0%';
+});
+
+// ====== Starfield ======
+const canvas = document.getElementById('starfield');
+const ctx = canvas.getContext('2d');
+let stars = [];
+let w, h;
+
+function resize() {
+  w = canvas.width = window.innerWidth;
+  h = canvas.height = window.innerHeight;
+}
+resize();
+window.addEventListener('resize', () => { resize(); initStars(); });
+
+let frameCount = 0;
+function initStars() {
+  const count = Math.floor(w * h / 1200);
+  stars = [];
+  for (let i = 0; i < count; i++) {
+    stars.push({
+      x: Math.random() * w, y: Math.random() * h,
+      r: Math.random() * 1.6 + 0.3,
+      alpha: Math.random(),
+      twinkleSpeed: Math.random() * 0.02 + 0.005,
+      baseAlpha: Math.random() * 0.6 + 0.3,
+      pulsar: Math.random() < 0.03,
+      pulsarPhase: Math.random() * Math.PI * 2,
+      pulsarPeriod: Math.random() * 3 + 2,
+    });
+  }
+}
+initStars();
+
+function drawStars() {
+  frameCount++;
+  ctx.clearRect(0, 0, w, h);
+  for (const s of stars) {
+    s.alpha += s.twinkleSpeed;
+    if (s.alpha > s.baseAlpha + 0.3 || s.alpha < s.baseAlpha - 0.3) s.twinkleSpeed *= -1;
+    const a = Math.max(0.08, Math.min(1, s.alpha));
+    ctx.beginPath();
+    ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(160,210,255,${a})`;
+    ctx.fill();
+    if (s.r > 1) {
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, s.r * 2.5, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(59,139,235,${a * 0.15})`;
+      ctx.fill();
+    }
+  }
+  requestAnimationFrame(drawStars);
+}
+drawStars();
+
+// Mouse parallax
+document.addEventListener('mousemove', (e) => {
+  const mx = (e.clientX / w - 0.5) * 0.02;
+  const my = (e.clientY / h - 0.5) * 0.02;
+  for (const s of stars) {
+    s.x += mx * s.r;
+    s.y += my * s.r;
+    if (s.x < 0) s.x = w; if (s.x > w) s.x = 0;
+    if (s.y < 0) s.y = h; if (s.y > h) s.y = 0;
+  }
+});
+
+// Click burst
+document.addEventListener('click', (e) => {
+  // Outer ring burst
+  for (let i = 0; i < 20; i++) {
+    const angle = (Math.PI * 2 / 20) * i;
+    const speed = Math.random() * 2.5 + 1;
+    stars.push({
+      x: e.clientX, y: e.clientY,
+      r: Math.random() * 2.5 + 1,
+      alpha: 1, baseAlpha: 0.9,
+      twinkleSpeed: -0.04,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      life: 90,
+    });
+  }
+  // Random scatter
+  for (let i = 0; i < 15; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = Math.random() * 4 + 1;
+    stars.push({
+      x: e.clientX, y: e.clientY,
+      r: Math.random() * 1.5 + 0.3,
+      alpha: 0.8, baseAlpha: 0.7,
+      twinkleSpeed: -0.05,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      life: 50,
+    });
+  }
+  // Trail particles at click
+  for (let i = 0; i < 8; i++) {
+    const t = document.createElement('div');
+    t.className = 'trail';
+    const sz = Math.random() * 7 + 3;
+    t.style.width = sz + 'px'; t.style.height = sz + 'px';
+    t.style.left = (e.clientX + (Math.random() - 0.5) * 30) + 'px';
+    t.style.top = (e.clientY + (Math.random() - 0.5) * 30) + 'px';
+    t.style.animationDuration = '1.2s';
+    document.body.appendChild(t);
+    setTimeout(() => t.remove(), 1200);
+  }
+});
+
+// Meteors & nebula
+let meteors = [];
+const nebulaBlobs = [
+  { x: 0.2, y: 0.3, r: 350, dx: 0.00003, dy: 0.00002, hue: 210 },
+  { x: 0.75, y: 0.6, r: 280, dx: -0.00002, dy: 0.00003, hue: 230 },
+  { x: 0.5, y: 0.8, r: 400, dx: 0.00002, dy: -0.00004, hue: 200 },
+];
+
+function spawnMeteor() {
+  const angle = Math.random() * Math.PI * 0.5 + Math.PI * 0.25; // mostly diagonal
+  const startX = Math.random() * w;
+  const startY = Math.random() * h * 0.4;
+  meteors.push({
+    x: startX, y: startY,
+    vx: Math.cos(angle) * (Math.random() * 5 + 4),
+    vy: Math.sin(angle) * (Math.random() * 5 + 4),
+    len: Math.random() * 80 + 40,
+    life: 1,
+    decay: Math.random() * 0.008 + 0.006,
+  });
+}
+
+// Update stars and draw everything
+const origDrawStars = drawStars;
+drawStars = function() {
+  // Update burst particles
+  for (let i = stars.length - 1; i >= 0; i--) {
+    const s = stars[i];
+    if (s.vx !== undefined) {
+      s.x += s.vx;
+      s.y += s.vy;
+      s.life--;
+      s.alpha = Math.max(0, s.life / 60);
+      if (s.life <= 0) { stars.splice(i, 1); }
+    }
+  }
+
+  // Draw nebula blobs (behind stars) — throttled
+  if (frameCount % 3 === 0) {
+  for (const n of nebulaBlobs) {
+    n.x += n.dx; n.y += n.dy;
+    if (n.x > 1.2 || n.x < -0.2) n.dx *= -1;
+    if (n.y > 1.2 || n.y < -0.2) n.dy *= -1;
+    const g = ctx.createRadialGradient(n.x * w, n.y * h, 0, n.x * w, n.y * h, n.r);
+    g.addColorStop(0, `hsla(${n.hue}, 70%, 50%, 0.025)`);
+    g.addColorStop(0.5, `hsla(${n.hue}, 60%, 40%, 0.012)`);
+    g.addColorStop(1, 'transparent');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, w, h);
+  }
+  }
+
+  // Draw regular stars
+  origDrawStars();
+
+  // Pulsar glow rings — throttled
+  if (frameCount % 2 === 0) {
+  const t = Date.now() / 1000;
+  for (const s of stars) {
+    if (s.pulsar && s.vx === undefined) {
+      const pulse = Math.sin(t * (2 / s.pulsarPeriod) + s.pulsarPhase) * 0.4 + 0.6;
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, s.r * 5, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(100, 170, 240, ${pulse * 0.08})`;
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, s.r * 10, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(59, 139, 235, ${pulse * 0.03})`;
+      ctx.fill();
+    }
+  }
+  }
+  // Constellation lines near cursor — throttled
+  if (frameCount % 2 === 0) {
+  const range = 180;
+  const nearby = stars.filter(s => {
+    const dx = s.x - mouseX, dy = s.y - mouseY;
+    return Math.hypot(dx, dy) < range && s.vx === undefined;
+  });
+  if (nearby.length > 1) {
+    ctx.lineWidth = 0.5;
+    for (let i = 0; i < nearby.length; i++) {
+      for (let j = i + 1; j < nearby.length; j++) {
+        const d = Math.hypot(nearby[i].x - nearby[j].x, nearby[i].y - nearby[j].y);
+        if (d < 100) {
+          const distFromCursor = Math.hypot((nearby[i].x + nearby[j].x) / 2 - mouseX, (nearby[i].y + nearby[j].y) / 2 - mouseY);
+          const alpha = Math.max(0, (1 - distFromCursor / range) * 0.5);
+          ctx.strokeStyle = `rgba(100, 170, 240, ${alpha})`;
+          ctx.beginPath();
+          ctx.moveTo(nearby[i].x, nearby[i].y);
+          ctx.lineTo(nearby[j].x, nearby[j].y);
+          ctx.stroke();
+        }
+      }
+    }
+  }
+
+  }
+  // Spawn meteors randomly
+  if (Math.random() < 0.008) spawnMeteor();
+
+  // Draw & update meteors
+  for (let i = meteors.length - 1; i >= 0; i--) {
+    const m = meteors[i];
+    m.x += m.vx;
+    m.y += m.vy;
+    m.life -= m.decay;
+    if (m.life <= 0 || m.x < -100 || m.x > w + 100 || m.y < -100 || m.y > h + 100) {
+      meteors.splice(i, 1);
+      continue;
+    }
+    const tailX = m.x - m.vx * m.len / 8;
+    const tailY = m.y - m.vy * m.len / 8;
+    const grad = ctx.createLinearGradient(tailX, tailY, m.x, m.y);
+    grad.addColorStop(0, 'rgba(160, 210, 255, 0)');
+    grad.addColorStop(0.7, `rgba(140, 200, 255, ${m.life * 0.5})`);
+    grad.addColorStop(1, `rgba(220, 240, 255, ${m.life * 0.9})`);
+    ctx.strokeStyle = grad;
+    ctx.lineWidth = 1.8;
+    ctx.beginPath();
+    ctx.moveTo(tailX, tailY);
+    ctx.lineTo(m.x, m.y);
+    ctx.stroke();
+    // Trail particles
+    if (Math.random() < 0.6) {
+      const px = m.x - m.vx * 0.3 + (Math.random() - 0.5) * 4;
+      const py = m.y - m.vy * 0.3 + (Math.random() - 0.5) * 4;
+      ctx.beginPath();
+      ctx.arc(px, py, Math.random() * 1 + 0.3, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(180, 220, 255, ${m.life * 0.5})`;
+      ctx.fill();
+    }
+    // Bright head
+    ctx.beginPath();
+    ctx.arc(m.x, m.y, 2, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(220, 240, 255, ${m.life})`;
+    ctx.fill();
+  }
+};
+
+// ====== Typewriter ======
+const phrases = [
+  '梦想是不会发光的，发光的是追梦的你。',
+  'Hello, World!',
+  'KEEP DREAMING',
+];
+let phraseIdx = 0, charIdx = 0, deleting = false;
+const twEl = document.getElementById('typewriter');
+
+function type() {
+  const current = phrases[phraseIdx];
+  if (!deleting) {
+    twEl.textContent = current.slice(0, charIdx + 1);
+    charIdx++;
+    if (charIdx === current.length) { deleting = true; setTimeout(type, 2000); return; }
+    setTimeout(type, 80 + Math.random() * 60);
+  } else {
+    twEl.textContent = current.slice(0, charIdx - 1);
+    charIdx--;
+    if (charIdx === 0) { deleting = false; phraseIdx = (phraseIdx + 1) % phrases.length; setTimeout(type, 400); return; }
+    setTimeout(type, 30);
+  }
+}
+type();
+
+// ====== Glitch name randomly ======
+const heroName = document.getElementById('hero-name');
+setInterval(() => {
+  heroName.classList.add('glitch');
+  setTimeout(() => heroName.classList.remove('glitch'), 300);
+}, 5000);
+
+// ====== Fade-in on scroll (staggered) ======
+const fadeObserver = new IntersectionObserver((entries) => {
+  entries.forEach(entry => {
+    if (!entry.isIntersecting) return;
+    const target = entry.target;
+    // Stagger children within the same parent section
+    const section = target.closest('section');
+    if (section && section !== target) {
+      // target is a child of a section — stagger siblings
+      const pending = Array.from(section.querySelectorAll('.fade-in:not(.visible)'));
+      pending.forEach((el, i) => {
+        el.style.transitionDelay = (i * 0.06) + 's';
+        el.classList.add('visible');
+      });
+    } else if (target.tagName === 'SECTION' || !target.closest('section.fade-in')) {
+      // target is a section itself or a standalone element
+      target.classList.add('visible');
+    }
+    fadeObserver.unobserve(target);
+  });
+}, { threshold: 0.12 });
+document.querySelectorAll('.fade-in').forEach(el => fadeObserver.observe(el));
+
+// ====== Animate skill bars when visible ======
+const barObserver = new IntersectionObserver((entries) => {
+  entries.forEach(e => {
+    if (e.isIntersecting) {
+      e.target.querySelectorAll('.skill-bar-fill').forEach(bar => {
+        bar.style.width = bar.dataset.width;
+      });
+    }
+  });
+}, { threshold: 0.3 });
+barObserver.observe(document.getElementById('skill-bars'));
+
+// ====== Section Title Scroll-Linked Shimmer ======
+const titleObserver = new IntersectionObserver((entries) => {
+  entries.forEach(entry => {
+    const title = entry.target.querySelector('.section-title');
+    if (!title) return;
+    if (entry.isIntersecting) {
+      // Reset animation to trigger fresh sweep
+      title.style.animation = 'none';
+      title.offsetHeight; // force reflow
+      title.style.animation = '';
+    }
+  });
+}, { threshold: 0.3 });
+document.querySelectorAll('section').forEach(sec => titleObserver.observe(sec));
+
+// ====== Back to top ======
+const backTop = document.getElementById('back-top');
+window.addEventListener('scroll', () => {
+  backTop.classList.toggle('visible', window.scrollY > 500);
+});
+
+// ====== Nav scroll spy ======
+const sections = document.querySelectorAll('section[id]');
+const navLinks = document.querySelectorAll('.nav-links a');
+window.addEventListener('scroll', () => {
+  let current = '';
+  sections.forEach(sec => {
+    if (window.scrollY >= sec.offsetTop - 100) current = sec.id;
+  });
+  navLinks.forEach(a => {
+    a.classList.toggle('active', a.getAttribute('href') === '#' + current);
+  });
+});
+
+// ====== Mobile nav toggle ======
+const navToggle = document.getElementById('nav-toggle');
+const navList = document.getElementById('nav-links');
+navToggle.addEventListener('click', () => navList.classList.toggle('open'));
+navList.querySelectorAll('a').forEach(a => {
+  a.addEventListener('click', () => navList.classList.remove('open'));
+});
+
+// ====== Steam Games ======
+async function loadSteamGames() {
+  const grid = document.getElementById('games-grid');
+  const title = document.getElementById('steam-title');
+  const totalEl = document.getElementById('steam-total');
+  try {
+    const r = await fetch('/api/steam');
+    const data = await r.json();
+    if (!data.games || data.games.length === 0) throw new Error('No data');
+
+    const maxHours = data.games[0].hours;
+    title.textContent = 'GhostLLC 的游戏库';
+    totalEl.innerHTML = `共 <b>${data.count}</b> 款游戏 · 总时长 <b>${data.totalHours}</b> 小时`;
+
+    grid.innerHTML = data.games.map((g, i) => `
+      <div class="game-card fade-in" style="animation-delay:${i * 0.05}s">
+        <img src="${g.icon}" alt="${g.name}" loading="lazy" onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22><rect width=%2232%22 height=%2232%22 rx=%224%22 fill=%22%230a1a3a%22/><text x=%2216%22 y=%2222%22 text-anchor=%22middle%22 fill=%22%233b8beb%22 font-size=%2212%22>🎮</text></svg>'">
+        <div class="game-info">
+          <div class="game-name" title="${g.name}">${g.name}</div>
+          <div class="game-hours-row">
+            <div class="game-hours-bar">
+              <div class="game-hours-fill" style="width:${(g.hours / maxHours * 100)}%"></div>
+            </div>
+            <span class="game-hours-num">${g.hours}h</span>
+          </div>
+          ${g.recent > 0 ? `<div class="game-recent">近两周 ${g.recent}h</div>` : ''}
+        </div>
+      </div>
+    `).join('');
+
+    // Observe new cards for fade-in
+    document.querySelectorAll('#games-grid .fade-in').forEach(el => fadeObserver.observe(el));
+  } catch (e) {
+    grid.innerHTML = '<div class="steam-loading-fallback">Steam 数据加载失败，请稍后刷新</div>';
+  }
+}
+loadSteamGames();
+
+
+
+// ====== Floating particles ======
+const fpContainer = document.getElementById('floating-particles');
+function spawnParticle() {
+  const p = document.createElement('div');
+  p.className = 'fp';
+  const size = Math.random() * 3 + 1;
+  p.style.width = size + 'px'; p.style.height = size + 'px';
+  p.style.left = Math.random() * 100 + '%';
+  p.style.animationDuration = (Math.random() * 12 + 8) + 's';
+  fpContainer.appendChild(p);
+  setTimeout(() => p.remove(), 20000);
+}
+setInterval(spawnParticle, 1200);
+for (let i = 0; i < 8; i++) spawnParticle();
+
+// ====== Mouse Spotlight ======
+const spotOuter = document.getElementById('spot-outer');
+const spotInner = document.getElementById('spot-inner');
+const cursorRing = document.getElementById('cursor-ring');
+let mouseX = -200, mouseY = -200;
+let curX = -200, curY = -200;
+let curX2 = -200, curY2 = -200;
+
+document.addEventListener('mousemove', (e) => {
+  mouseX = e.clientX;
+  mouseY = e.clientY;
+  // Trail particles (throttled by probability)
+  if (Math.random() < 0.45) {
+    const t = document.createElement('div');
+    t.className = 'trail';
+    const sz = Math.random() * 5 + 2;
+    t.style.width = sz + 'px'; t.style.height = sz + 'px';
+    t.style.left = e.clientX + 'px'; t.style.top = e.clientY + 'px';
+    document.body.appendChild(t);
+    setTimeout(() => t.remove(), 800);
+  }
+});
+
+// Orbit dots
+const orbitDots = [];
+for (let i = 0; i < 3; i++) {
+  const dot = document.createElement('div');
+  dot.className = 'orbit-dot';
+  document.body.appendChild(dot);
+  orbitDots.push({ el: dot, angle: (Math.PI * 2 / 3) * i, radius: 22, speed: 0.025 + i * 0.005 });
+}
+
+function updateSpotlight() {
+  curX += (mouseX - curX) * 0.06;
+  curY += (mouseY - curY) * 0.06;
+  spotOuter.style.left = curX + 'px';
+  spotOuter.style.top = curY + 'px';
+
+  curX2 += (mouseX - curX2) * 0.12;
+  curY2 += (mouseY - curY2) * 0.12;
+  spotInner.style.left = curX2 + 'px';
+  spotInner.style.top = curY2 + 'px';
+
+  cursorRing.style.left = mouseX + 'px';
+  cursorRing.style.top = mouseY + 'px';
+
+  // Orbit dots
+  orbitDots.forEach(d => {
+    d.angle += d.speed;
+    d.el.style.left = (mouseX + Math.cos(d.angle) * d.radius) + 'px';
+    d.el.style.top = (mouseY + Math.sin(d.angle) * d.radius) + 'px';
+  });
+
+  requestAnimationFrame(updateSpotlight);
+}
+updateSpotlight();
+
+// ====== Cursor-Tracking Card Glow ======
+function initCardGlow() {
+  document.querySelectorAll('.glass-card, .skill-card, .interest-card, .stat-item, .game-card, .social-link').forEach(card => {
+    card.classList.add('card-glow');
+    card.addEventListener('mousemove', (e) => {
+      const rect = card.getBoundingClientRect();
+      card.style.setProperty('--mx', ((e.clientX - rect.left) / rect.width * 100).toFixed(1) + '%');
+      card.style.setProperty('--my', ((e.clientY - rect.top) / rect.height * 100).toFixed(1) + '%');
+    });
+    card.addEventListener('mouseleave', () => {
+      card.style.removeProperty('--mx');
+      card.style.removeProperty('--my');
+    });
+  });
+}
+initCardGlow();
+
+// Enlarge cursor ring on hover over interactive elements
+document.querySelectorAll('a, button, .interest-card, .skill-card, .stat-item, .back-top').forEach(el => {
+  el.addEventListener('mouseenter', () => {
+    cursorRing.style.width = '48px';
+    cursorRing.style.height = '48px';
+    cursorRing.style.borderColor = 'rgba(126, 184, 255, 0.5)';
+    orbitDots.forEach(d => { d.radius = 33; d.speed = 0.04; });
+  });
+  el.addEventListener('mouseleave', () => {
+    cursorRing.style.width = '32px';
+    cursorRing.style.height = '32px';
+    cursorRing.style.borderColor = 'rgba(126, 184, 255, 0.25)';
+    orbitDots.forEach(d => { d.radius = 22; d.speed = 0.025; });
+  });
+});
+</script>
+
+</body>
+</html>
